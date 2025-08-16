@@ -175,6 +175,11 @@ void showMap(Map *map)
     for (int j = 0; j < columns; j++)
     {
       printf("%c", map->grid[i][j]);
+
+      if (j != (columns - 1))
+      {
+        printf("|");
+      }
     }
     printf("\n");
   }
