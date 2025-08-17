@@ -72,6 +72,9 @@ AllocateRobotRes allocateRobot(const Map *map, int num_args, ...);
 void writeRobotBase(Map *map, Point point);
 
 bool isInside(Map *map, Point point);
+bool isRobotBase(AllocateRobotRes robotBase, Point point);
+bool hasDirt(Map *map, Point point);
+bool hasObstacle(Map *map, Point point);
 
 void leftToRightAnimation();
 
@@ -297,7 +300,7 @@ void showMap(Map *map)
     printf("\n");
   }
 
-  printf("Obstaculos %d | Sujeira: %d", map->obstaclesAmount, map->dirtAmount);
+  printf("Obstaculos %d | Sujeira: %d\n", map->obstaclesAmount, map->dirtAmount);
 }
 
 AllocateRobotRes allocateRobot(const Map *map, int num_args, ...)
@@ -346,6 +349,46 @@ bool isInside(Map *map, Point point)
   }
 
   return true;
+}
+
+bool isRobotBase(AllocateRobotRes robotBase, Point point)
+{
+  if (robotBase.column == point.column && robotBase.row == point.row)
+  {
+    return true;
+  }
+
+  return false;
+}
+
+bool hasDirt(Map *map, Point point)
+{
+  int column = point.column;
+  int row = point.row;
+
+  char cell = map->grid[row][column];
+
+  if (cell == '*')
+  {
+    return true;
+  }
+
+  return false;
+}
+
+bool hasObstacle(Map *map, Point point)
+{
+  int column = point.column;
+  int row = point.row;
+
+  char cell = map->grid[row][column];
+
+  if (cell == '#')
+  {
+    return true;
+  }
+
+  return false;
 }
 
 void leftToRightAnimation()
