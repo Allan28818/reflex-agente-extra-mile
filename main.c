@@ -3,6 +3,7 @@
 #include <time.h>
 #include <locale.h>
 #include <stdarg.h>
+#include <stdbool.h>
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
@@ -69,6 +70,8 @@ void showMap(Map *grid);
 
 AllocateRobotRes allocateRobot(const Map *map, int num_args, ...);
 void writeRobotBase(Map *map, Point point);
+
+bool isInside(Map *map, Point point);
 
 void leftToRightAnimation();
 
@@ -326,6 +329,23 @@ AllocateRobotRes allocateRobot(const Map *map, int num_args, ...)
 void writeRobotBase(Map *map, Point point)
 {
   map->grid[point.row][point.column] = 'B';
+}
+
+bool isInside(Map *map, Point point)
+{
+  int columns = map->columns;
+  int rows = map->rows;
+
+  if (point.column < 0 || point.column >= columns)
+  {
+    return false;
+  }
+  else if (point.row < 0 || point.row >= rows)
+  {
+    return false;
+  }
+
+  return true;
 }
 
 void leftToRightAnimation()
