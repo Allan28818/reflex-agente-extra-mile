@@ -5,13 +5,13 @@
 #include <stdarg.h>
 
 #if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#define SLEEP(time) Sleep(time * 1000)
 #define CLEAR_COMMAND "cls"
-#elif defined(__linux__) || defined(__unix__)
+#elif defined(__linux__) || defined(__unix__) || defined(__APPLE__)
+#include <unistd.h>
+#define SLEEP(time) sleep(time)
 #define CLEAR_COMMAND "clear"
-#elif defined(__APPLE__)
-#define CLEAR_COMMAND "clear"
-#else
-#define CLEAR_COMMAND "cls"
 #endif
 
 #ifdef __cplusplus
@@ -40,18 +40,25 @@ typedef struct
   int rows;
 } Map;
 
-typedef enum
-{
-  ERROR,
-  WARN,
-  INFO
-} LogOption;
-
 typedef struct
 {
   int column;
   int row;
 } AllocateRobotRes;
+
+typedef enum
+{
+  LOG_ERROR,
+  LOG_WARN,
+  LOG_INFO
+} LogOption;
+
+typedef enum
+{
+  LEFT_TO_RIGHT,
+  SPIRAL,
+  ZIGZAG
+} CleaningMode;
 
 void consoleLog(char *content, LogOption option);
 
@@ -62,6 +69,8 @@ void showMap(Map *grid);
 
 AllocateRobotRes allocateRobot(const Map *map, int num_args, ...);
 void writeRobotBase(Map *map, Point point);
+
+void leftToRightAnimation();
 
 int main()
 {
@@ -75,9 +84,12 @@ int main()
   int robotColumn, robotRow;
   AllocateRobotRes robotInitialPosition;
 
+  char cleaningModeRes[10];
+  CleaningMode cleaningMode;
+
   fillMap(map);
 
-  consoleLog("Do you want to type your robot coordinates? (y) ", INFO);
+  consoleLog("Do you want to type your robot coordinates? (y) ", LOG_INFO);
   scanf("%1s", allocateRobotRes);
 
   if (strcmp(allocateRobotRes, "y") == 0)
@@ -122,7 +134,7 @@ int main()
   else
   {
     system(CLEAR_COMMAND);
-    consoleLog("The system will randomly select the position of your robot!", INFO);
+    consoleLog("The system will randomly select the position of your robot!", LOG_INFO);
 
     robotInitialPosition = allocateRobot(map, 0);
     Point currentRobotPosition = {robotInitialPosition.column, robotInitialPosition.row};
@@ -130,6 +142,26 @@ int main()
     writeRobotBase(map, currentRobotPosition);
   }
 
+  while (1)
+  {
+    printf(
+        "Select a cleaning mode:\n"
+        "(1) LEFT TO RIGHT: the robot will clean from top to down, from left to right\n"
+        "(2) SPIRAL: the robot will clean in a circle in spiral movements\n"
+        "(3) ZIGZAG: the robot will clean making a zigzag from left to right\n");
+
+    scanf("%1s", cleaningModeRes);
+
+    if (strcmp(cleaningModeRes, "1") == 0)
+    {
+      cleaningMode = LEFT_TO_RIGHT;
+      system(CLEAR_COMMAND);
+      leftToRightAnimation();
+      break;
+    }
+
+    break;
+  }
   showMap(map);
 
   for (int i = 0; i < map->rows; i++)
@@ -150,19 +182,19 @@ void consoleLog(char *content, LogOption option)
 
   switch (option)
   {
-  case ERROR:
+  case LOG_ERROR:
     strcpy(presentationContent, "\x1b[31m");
     strcat(presentationContent, content);
     strcat(presentationContent, "\x1b[0m\n");
     printf(presentationContent);
     break;
-  case WARN:
+  case LOG_WARN:
     strcpy(presentationContent, "\x1b[33m");
     strcat(presentationContent, content);
     strcat(presentationContent, "\x1b[0m\n");
     printf(presentationContent);
     break;
-  case INFO:
+  case LOG_INFO:
     strcpy(presentationContent, "\x1b[34m");
     strcat(presentationContent, content);
     strcat(presentationContent, "\x1b[0m\n");
@@ -181,7 +213,7 @@ Map *allocateMap(int columns, int rows)
 
   if (!map)
   {
-    consoleLog("[ERROR][map] It wasn't possible to allocate memory!", ERROR);
+    consoleLog("[ERROR][map] It wasn't possible to allocate memory!", LOG_ERROR);
   }
 
   map->columns = columns;
@@ -191,7 +223,7 @@ Map *allocateMap(int columns, int rows)
 
   if (!map->grid)
   {
-    consoleLog("[ERROR][grid:1] It wasn't possible to allocate memory!", ERROR);
+    consoleLog("[ERROR][grid:1] It wasn't possible to allocate memory!", LOG_ERROR);
   }
 
   for (int i = 0; i < rows; i++)
@@ -200,7 +232,7 @@ Map *allocateMap(int columns, int rows)
 
     if (!map->grid[i])
     {
-      consoleLog("[ERROR][grid:2] It wasn't possible to allocate memory!", ERROR);
+      consoleLog("[ERROR][grid:2] It wasn't possible to allocate memory!", LOG_ERROR);
     }
   }
 
@@ -294,4 +326,32 @@ AllocateRobotRes allocateRobot(const Map *map, int num_args, ...)
 void writeRobotBase(Map *map, Point point)
 {
   map->grid[point.row][point.column] = 'B';
+}
+
+void leftToRightAnimation()
+{
+  printf("Left to right selected /\n");
+  printf("->\n");
+  SLEEP(0.25);
+  system(CLEAR_COMMAND);
+  printf("Left to right selected -\n");
+  printf("-->\n");
+  SLEEP(0.25);
+  system(CLEAR_COMMAND);
+  printf("Left to right selected |\n");
+  printf("--->\n");
+  SLEEP(0.25);
+  system(CLEAR_COMMAND);
+  printf("Left to right selected \\\n");
+  printf("---->\n");
+  SLEEP(0.25);
+  system(CLEAR_COMMAND);
+  printf("Left to right selected |\n");
+  printf("----->\n");
+  SLEEP(0.25);
+  system(CLEAR_COMMAND);
+  printf("Left to right selected /\n");
+  printf("------>\n");
+  SLEEP(0.25);
+  system(CLEAR_COMMAND);
 }
