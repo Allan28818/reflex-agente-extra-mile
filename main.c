@@ -2,6 +2,17 @@
 #include <string.h>
 #include <time.h>
 #include <locale.h>
+#include <stdarg.h>
+
+#if defined(_WIN32) || defined(_WIN64)
+#define CLEAR_COMMAND "cls"
+#elif defined(__linux__) || defined(__unix__)
+#define CLEAR_COMMAND "clear"
+#elif defined(__APPLE__)
+#define CLEAR_COMMAND "clear"
+#else
+#define CLEAR_COMMAND "cls"
+#endif
 
 #ifdef __cplusplus
 #include <cstdlib>
@@ -36,12 +47,21 @@ typedef enum
   INFO
 } LogOption;
 
+typedef struct
+{
+  int column;
+  int row;
+} AllocateRobotRes;
+
 void consoleLog(char *content, LogOption option);
 
 Map *allocateMap(int columns, int rows);
 
 void fillMap(Map *grid);
 void showMap(Map *grid);
+
+AllocateRobotRes allocateRobot(const Map *map, int num_args, ...);
+void writeRobotBase(Map *map, Point point);
 
 int main()
 {
@@ -51,7 +71,65 @@ int main()
 
   Map *map = allocateMap(columns, rows);
 
+  char allocateRobotRes[10];
+  int robotColumn, robotRow;
+  AllocateRobotRes robotInitialPosition;
+
   fillMap(map);
+
+  consoleLog("Do you want to type your robot coordinates? (y) ", INFO);
+  scanf("%1s", allocateRobotRes);
+
+  if (strcmp(allocateRobotRes, "y") == 0)
+  {
+    system(CLEAR_COMMAND);
+
+    while (1)
+    {
+      printf("Type the column...\n");
+      scanf("%d", &robotColumn);
+
+      if (robotColumn >= map->columns || robotColumn < 0)
+      {
+        printf("The column number must be between 0 and %d\n", map->columns - 1);
+        continue;
+      }
+
+      system(CLEAR_COMMAND);
+      break;
+    }
+
+    while (1)
+    {
+      printf("Type the row...\n");
+      scanf("%d", &robotRow);
+
+      if (robotRow >= map->rows || robotRow < 0)
+      {
+        printf("The column number must be between 0 and %d\n", map->rows - 1);
+        continue;
+      }
+
+      system(CLEAR_COMMAND);
+      break;
+    }
+
+    robotInitialPosition = allocateRobot(map, 2, robotRow, robotColumn);
+    Point currentRobotPosition = {robotInitialPosition.column, robotInitialPosition.row};
+
+    writeRobotBase(map, currentRobotPosition);
+  }
+  else
+  {
+    system(CLEAR_COMMAND);
+    consoleLog("The system will randomly select the position of your robot!", INFO);
+
+    robotInitialPosition = allocateRobot(map, 0);
+    Point currentRobotPosition = {robotInitialPosition.column, robotInitialPosition.row};
+
+    writeRobotBase(map, currentRobotPosition);
+  }
+
   showMap(map);
 
   for (int i = 0; i < map->rows; i++)
@@ -185,4 +263,35 @@ void showMap(Map *map)
   }
 
   printf("Obstaculos %d | Sujeira: %d", map->obstaclesAmount, map->dirtAmount);
+}
+
+AllocateRobotRes allocateRobot(const Map *map, int num_args, ...)
+{
+  va_list args;
+  va_start(args, num_args);
+  int maxRowSize = map->rows - 1;
+  int maxColumnSize = map->columns - 1;
+
+  int row = rand() % maxRowSize;
+  int column = rand() % maxColumnSize;
+
+  srand(time(NULL));
+
+  if (num_args >= 1)
+  {
+    row = va_arg(args, int);
+  }
+  if (num_args >= 2)
+  {
+    column = va_arg(args, int);
+  }
+
+  AllocateRobotRes allocationRes = {column, row};
+
+  return allocationRes;
+}
+
+void writeRobotBase(Map *map, Point point)
+{
+  map->grid[point.row][point.column] = 'B';
 }
