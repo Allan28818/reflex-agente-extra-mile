@@ -75,7 +75,7 @@ typedef enum
  *       N
  *       ^
  *       |
- * W <--- ---> E
+ * W <---0---> E
  *       |
  *       v
  *       S
@@ -93,6 +93,8 @@ void consoleLog(char *content, LogOption option);
 
 Map *allocateMap(int columns, int rows);
 
+Robot *instantiateRobot();
+
 void fillMap(Map *grid);
 void showMap(Map *grid);
 
@@ -106,6 +108,9 @@ bool hasObstacle(Map *map, Point point);
 bool hasDifficult(Map *map, Point point);
 
 MappedPoint **getMappedPoints(Map *map, Point robotPosition);
+void freeMappedPoints(MappedPoint **points);
+
+void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot);
 
 void leftToRightClean(Map *map, Robot *robot, Point);
 
@@ -118,9 +123,11 @@ int main()
   int rows = 10;
 
   Map *map = allocateMap(columns, rows);
+  Robot *robot = instantiateRobot();
 
   char allocateRobotRes[10];
   int robotColumn, robotRow;
+
   Point robotInitialPosition;
 
   char cleaningModeRes[10];
@@ -202,10 +209,8 @@ int main()
     consoleLog("Digite um opcao valida (1, 2 ou 3)", ERROR);
     continue;
   }
-  showMap(map);
 
-  Point point = {0, 0};
-  MappedPoint **mappedPoints = getMappedPoints(map, point);
+  showMap(map);
 
   for (int i = 0; i < map->rows; i++)
   {
@@ -280,6 +285,17 @@ Map *allocateMap(int columns, int rows)
   }
 
   return map;
+}
+
+Robot *instantiateRobot()
+{
+  Robot *robot = MALLOC(Robot, 1);
+
+  robot->battery = 100;
+  robot->blockedAttempts = 0;
+  robot->cleanedCells = 0;
+
+  return robot;
 }
 
 void fillMap(Map *map)
@@ -484,6 +500,55 @@ MappedPoint **getMappedPoints(Map *map, Point robotPosition)
 
   return points;
 }
+
+void freeMappedPoints(MappedPoint **points)
+{
+  for (int i = 0; i < 4; i++)
+  {
+    FREE(points[i]);
+  }
+
+  FREE(points);
+}
+
+void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
+{
+  Point point = {newPosition->column, newPosition->row};
+  int inside = isInside(map, point);
+
+  if (!inside)
+  {
+    robot->blockedAttempts++;
+    return;
+  }
+
+  int isDirt = hasDirt(map, point);
+  int isDifficult = hasDifficult(map, point);
+
+  if (newPosition->isBlocked)
+  {
+    robot->blockedAttempts++;
+    return;
+  }
+  else if (isDirt || isDifficult)
+  {
+    map->grid[newPosition->row][newPosition->column] = '.';
+    robot->cleanedCells++;
+  }
+
+  if (isDirt)
+  {
+    robot->battery -= 1;
+  }
+  else if (isDifficult)
+  {
+    robot->battery -= 2;
+  }
+  else
+  {
+    robot->battery -= 1;
+  }
+};
 
 void leftToRightAnimation()
 {
