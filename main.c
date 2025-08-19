@@ -18,10 +18,12 @@
 #ifdef __cplusplus
 #include <cstdlib>
 #define MALLOC(type, size) ((type *)std::malloc(sizeof(type) * (size)))
+#define REALLOC(ptr, type, size) ((type *)std::realloc(ptr, sizeof(type) * (size)))
 #define FREE(pointer) std::free(pointer)
 #else
 #include <stdlib.h>
 #define MALLOC(type, size) ((type *)malloc(sizeof(type) * (size)))
+#define REALLOC(ptr, type, size) ((type *)realloc(ptr, sizeof(type) * (size)))
 #define FREE(pointer) free(pointer)
 #endif
 
@@ -42,7 +44,6 @@ typedef struct
 
 typedef struct
 {
-  Point **visitedPoints;
   int obstaclesAmount;
   int dirtAmount;
   char **grid;
@@ -52,9 +53,11 @@ typedef struct
 
 typedef struct
 {
-  float battery;
+  double battery;
   int cleanedCells;
   int blockedAttempts;
+  int visitedPointsAmount;
+  Point *visitedPoints;
 } Robot;
 
 typedef enum
@@ -93,10 +96,11 @@ void consoleLog(char *content, LogOption option);
 
 Map *allocateMap(int columns, int rows);
 
-Robot *instantiateRobot();
+Robot *instantiateRobot(Point robotBase);
+void freeRobot(Robot *robot);
 
 void fillMap(Map *grid);
-void showMap(Map *grid);
+void showMap(Map *grid, Robot *robot);
 
 Point allocateRobot(const Map *map, int num_args, ...);
 void writeRobotBase(Map *map, Point point);
@@ -107,12 +111,12 @@ bool hasDirt(Map *map, Point point);
 bool hasObstacle(Map *map, Point point);
 bool hasDifficult(Map *map, Point point);
 
-MappedPoint **getMappedPoints(Map *map, Point robotPosition);
+MappedPoint **getMappedPoints(Map *map, Point robotPosition, Point robotBase);
 void freeMappedPoints(MappedPoint **points);
 
 void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot);
 
-void leftToRightClean(Map *map, Robot *robot, Point);
+void leftToRightClean(Map *map, Robot *robot, Point robotBase);
 
 void leftToRightAnimation();
 
@@ -123,7 +127,6 @@ int main()
   int rows = 10;
 
   Map *map = allocateMap(columns, rows);
-  Robot *robot = instantiateRobot();
 
   char allocateRobotRes[10];
   int robotColumn, robotRow;
@@ -142,7 +145,7 @@ int main()
   {
     system(CLEAR_COMMAND);
 
-    while (1)
+    while (true)
     {
       printf("Digite uma coluna entre 0 - %d...\n", columns - 1);
       scanf("%d", &robotColumn);
@@ -157,7 +160,7 @@ int main()
       break;
     }
 
-    while (1)
+    while (true)
     {
       printf("Digite a linha entre 0 - %d...\n", rows - 1);
       scanf("%d", &robotRow);
@@ -188,7 +191,7 @@ int main()
     writeRobotBase(map, currentRobotPosition);
   }
 
-  while (1)
+  while (true)
   {
     printf(
         "Selecione um modo de limpeza:\n"
@@ -210,7 +213,21 @@ int main()
     continue;
   }
 
-  showMap(map);
+  Robot *robot = instantiateRobot(robotInitialPosition);
+
+  printf("Robo: coluna(%d) linha(%d) pontos visitados(%d) \n", robot->visitedPoints[0].column, robot->visitedPoints[0].row, robot->visitedPointsAmount);
+
+  map->grid[0][0] = '.';
+  MappedPoint *point = MALLOC(MappedPoint, 1);
+
+  point->column = 0;
+  point->row = 0;
+  point->isBlocked = 0;
+  cleanCell(map, point, robot);
+
+  printf("Ponto coluna(%d) linha(%d)\n", robot->visitedPoints[0].column, robot->visitedPoints[0].row);
+  printf("Ponto coluna(%d) linha(%d)\n", robot->visitedPoints[1].column, robot->visitedPoints[1].row);
+  showMap(map, robot);
 
   for (int i = 0; i < map->rows; i++)
   {
@@ -218,15 +235,15 @@ int main()
   }
 
   FREE(map->grid);
-  FREE(map->visitedPoints);
   FREE(map);
+  freeRobot(robot);
 
   return 0;
 }
 
 void consoleLog(char *content, LogOption option)
 {
-  char *presentationContent = MALLOC(char, sizeof(content) + 12);
+  char *presentationContent = MALLOC(char, strlen(content) + 12);
 
   switch (option)
   {
@@ -287,15 +304,42 @@ Map *allocateMap(int columns, int rows)
   return map;
 }
 
-Robot *instantiateRobot()
+Robot *instantiateRobot(Point robotBase)
 {
   Robot *robot = MALLOC(Robot, 1);
 
-  robot->battery = 100;
+  if (!robot)
+  {
+    consoleLog("[ERROR][robot] Nao foi possivel alocar memoria", LOG_ERROR);
+    FREE(robot);
+    return NULL;
+  }
+
+  robot->battery = 100.0f;
   robot->blockedAttempts = 0;
   robot->cleanedCells = 0;
 
+  robot->visitedPoints = MALLOC(Point, 1);
+
+  if (!robot->visitedPoints)
+  {
+    consoleLog("[ERROR][robot:2] Nao foi possivel alocar memoria", LOG_ERROR);
+    FREE(robot->visitedPoints);
+    FREE(robot);
+    return NULL;
+  }
+
+  robot->visitedPoints[robot->visitedPointsAmount++] = robotBase;
+
   return robot;
+}
+
+void freeRobot(Robot *robot)
+{
+  int visitedPointsAmount = robot->visitedPointsAmount;
+
+  FREE(robot->visitedPoints);
+  FREE(robot);
 }
 
 void fillMap(Map *map)
@@ -334,7 +378,7 @@ void fillMap(Map *map)
   }
 }
 
-void showMap(Map *map)
+void showMap(Map *map, Robot *robot)
 {
   int rows = map->rows;
   int columns = map->columns;
@@ -353,7 +397,7 @@ void showMap(Map *map)
     printf("\n");
   }
 
-  printf("Obstaculos %d | Sujeira: %d\n", map->obstaclesAmount, map->dirtAmount);
+  printf("Obstaculos %d | Sujeira: %d | Bateria: %.2f%%\n", map->obstaclesAmount, map->dirtAmount, robot->battery);
 }
 
 Point allocateRobot(const Map *map, int num_args, ...)
@@ -459,7 +503,7 @@ bool hasDifficult(Map *map, Point point)
   return false;
 }
 
-MappedPoint **getMappedPoints(Map *map, Point robotPosition)
+MappedPoint **getMappedPoints(Map *map, Point robotPosition, Point robotBase)
 {
   MappedPoint **points = MALLOC(MappedPoint *, 4);
 
@@ -481,22 +525,22 @@ MappedPoint **getMappedPoints(Map *map, Point robotPosition)
   Point northPoint = {robotPosition.column, robotPosition.row - 1};
   points[NORTH]->column = northPoint.column;
   points[NORTH]->row = northPoint.row;
-  points[NORTH]->isBlocked = !isInside(map, northPoint) || hasObstacle(map, northPoint);
+  points[NORTH]->isBlocked = !isInside(map, northPoint) || hasObstacle(map, northPoint) || isRobotBase(robotBase, northPoint);
 
   Point southPoint = {robotPosition.column, robotPosition.row + 1};
   points[SOUTH]->column = southPoint.column;
   points[SOUTH]->row = southPoint.row;
-  points[SOUTH]->isBlocked = !isInside(map, southPoint) || hasObstacle(map, southPoint);
+  points[SOUTH]->isBlocked = !isInside(map, southPoint) || hasObstacle(map, southPoint) || isRobotBase(robotBase, southPoint);
 
   Point eastPoint = {robotPosition.column + 1, robotPosition.row};
   points[EAST]->column = eastPoint.column;
   points[EAST]->row = eastPoint.row;
-  points[EAST]->isBlocked = !isInside(map, eastPoint) || hasObstacle(map, eastPoint);
+  points[EAST]->isBlocked = !isInside(map, eastPoint) || hasObstacle(map, eastPoint) || isRobotBase(robotBase, eastPoint);
 
   Point westPoint = {robotPosition.column - 1, robotPosition.row};
   points[WEST]->column = westPoint.column;
   points[WEST]->row = westPoint.row;
-  points[WEST]->isBlocked = !isInside(map, westPoint) || hasObstacle(map, westPoint);
+  points[WEST]->isBlocked = !isInside(map, westPoint) || hasObstacle(map, westPoint) || isRobotBase(robotBase, westPoint);
 
   return points;
 }
@@ -548,7 +592,39 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
   {
     robot->battery -= 1;
   }
+
+  Point *temporary = REALLOC(robot->visitedPoints, Point, robot->visitedPointsAmount + 1);
+
+  if (!temporary)
+  {
+    consoleLog("[ERROR][temporary] Nao foi possivel alocar memoria", LOG_ERROR);
+    return;
+  }
+
+  robot->visitedPoints = temporary;
+
+  robot->visitedPoints[robot->visitedPointsAmount] = point;
+  robot->visitedPointsAmount++;
 };
+
+void leftToRightClean(Map *map, Robot *robot, Point robotBase)
+{
+  MappedPoint **initialMappedPoints = getMappedPoints(map, robotBase, robotBase);
+  bool isFirstExecution = true;
+
+  while (robot->battery > 50)
+  {
+    MappedPoint *northPoint, southPoint, eastPoint, westPoint;
+
+    if (isFirstExecution)
+    {
+    }
+
+    isFirstExecution = false;
+  }
+
+  freeMappedPoints(initialMappedPoints);
+}
 
 void leftToRightAnimation()
 {
