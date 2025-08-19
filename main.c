@@ -25,11 +25,20 @@
 #define FREE(pointer) free(pointer)
 #endif
 
+#define MAX_BATTERY 100.00
+
 typedef struct
 {
   int column;
   int row;
 } Point;
+
+typedef struct
+{
+  int column;
+  int row;
+  int isBlocked;
+} MappedPoint;
 
 typedef struct
 {
@@ -43,9 +52,10 @@ typedef struct
 
 typedef struct
 {
-  int column;
-  int row;
-} AllocateRobotRes;
+  float battery;
+  int cleanedCells;
+  int blockedAttempts;
+} Robot;
 
 typedef enum
 {
@@ -61,6 +71,24 @@ typedef enum
   ZIGZAG
 } CleaningMode;
 
+/**
+ *       N
+ *       ^
+ *       |
+ * W <--- ---> E
+ *       |
+ *       v
+ *       S
+ */
+
+typedef enum
+{
+  NORTH,
+  SOUTH,
+  EAST,
+  WEST
+} Locations;
+
 void consoleLog(char *content, LogOption option);
 
 Map *allocateMap(int columns, int rows);
@@ -68,13 +96,18 @@ Map *allocateMap(int columns, int rows);
 void fillMap(Map *grid);
 void showMap(Map *grid);
 
-AllocateRobotRes allocateRobot(const Map *map, int num_args, ...);
+Point allocateRobot(const Map *map, int num_args, ...);
 void writeRobotBase(Map *map, Point point);
 
 bool isInside(Map *map, Point point);
-bool isRobotBase(AllocateRobotRes robotBase, Point point);
+bool isRobotBase(Point robotBase, Point point);
 bool hasDirt(Map *map, Point point);
 bool hasObstacle(Map *map, Point point);
+bool hasDifficult(Map *map, Point point);
+
+MappedPoint **getMappedPoints(Map *map, Point robotPosition);
+
+void leftToRightClean(Map *map, Robot *robot, Point);
 
 void leftToRightAnimation();
 
@@ -88,28 +121,28 @@ int main()
 
   char allocateRobotRes[10];
   int robotColumn, robotRow;
-  AllocateRobotRes robotInitialPosition;
+  Point robotInitialPosition;
 
   char cleaningModeRes[10];
   CleaningMode cleaningMode;
 
   fillMap(map);
 
-  consoleLog("Do you want to type your robot coordinates? (y) ", LOG_INFO);
+  consoleLog("Deseja digitar as coordenadas do robo? (s) ", LOG_INFO);
   scanf("%1s", allocateRobotRes);
 
-  if (strcmp(allocateRobotRes, "y") == 0)
+  if (strcmp(allocateRobotRes, "s") == 0)
   {
     system(CLEAR_COMMAND);
 
     while (1)
     {
-      printf("Type the column...\n");
+      printf("Digite uma coluna entre 0 - %d...\n", columns - 1);
       scanf("%d", &robotColumn);
 
       if (robotColumn >= map->columns || robotColumn < 0)
       {
-        printf("The column number must be between 0 and %d\n", map->columns - 1);
+        printf("O numero da coluna deve estar entre 0 e %d\n", map->columns - 1);
         continue;
       }
 
@@ -119,12 +152,12 @@ int main()
 
     while (1)
     {
-      printf("Type the row...\n");
+      printf("Digite a linha entre 0 - %d...\n", rows - 1);
       scanf("%d", &robotRow);
 
       if (robotRow >= map->rows || robotRow < 0)
       {
-        printf("The column number must be between 0 and %d\n", map->rows - 1);
+        printf("O numero da linha deve estar entre 0 e %d\n", map->rows - 1);
         continue;
       }
 
@@ -140,7 +173,7 @@ int main()
   else
   {
     system(CLEAR_COMMAND);
-    consoleLog("The system will randomly select the position of your robot!", LOG_INFO);
+    consoleLog("O sistema ira randomizar automaticamente a posicao do robo!", LOG_INFO);
 
     robotInitialPosition = allocateRobot(map, 0);
     Point currentRobotPosition = {robotInitialPosition.column, robotInitialPosition.row};
@@ -151,10 +184,10 @@ int main()
   while (1)
   {
     printf(
-        "Select a cleaning mode:\n"
-        "(1) LEFT TO RIGHT: the robot will clean from top to down, from left to right\n"
-        "(2) SPIRAL: the robot will clean in a circle in spiral movements\n"
-        "(3) ZIGZAG: the robot will clean making a zigzag from left to right\n");
+        "Selecione um modo de limpeza:\n"
+        "(1) ESQUERDA PARA DIREITA: o robo ira limpar da esquerda para direita (de cima para baixo)\n"
+        "(2) ESPIRAl: o robo ira limpar em circulos espirais (de cima para baixo)\n"
+        "(3) ZIG-ZAG: o robo fara zigue-zague para limpar (de cima para baixo)\n");
 
     scanf("%1s", cleaningModeRes);
 
@@ -165,10 +198,14 @@ int main()
       leftToRightAnimation();
       break;
     }
-
-    break;
+    system(CLEAR_COMMAND);
+    consoleLog("Digite um opcao valida (1, 2 ou 3)", ERROR);
+    continue;
   }
   showMap(map);
+
+  Point point = {0, 0};
+  MappedPoint **mappedPoints = getMappedPoints(map, point);
 
   for (int i = 0; i < map->rows; i++)
   {
@@ -219,7 +256,7 @@ Map *allocateMap(int columns, int rows)
 
   if (!map)
   {
-    consoleLog("[ERROR][map] It wasn't possible to allocate memory!", LOG_ERROR);
+    consoleLog("[ERROR][map] Nao foi possivel alocar memoria", LOG_ERROR);
   }
 
   map->columns = columns;
@@ -229,7 +266,7 @@ Map *allocateMap(int columns, int rows)
 
   if (!map->grid)
   {
-    consoleLog("[ERROR][grid:1] It wasn't possible to allocate memory!", LOG_ERROR);
+    consoleLog("[ERROR][grid:1] Nao foi possivel alocar memoria", LOG_ERROR);
   }
 
   for (int i = 0; i < rows; i++)
@@ -238,7 +275,7 @@ Map *allocateMap(int columns, int rows)
 
     if (!map->grid[i])
     {
-      consoleLog("[ERROR][grid:2] It wasn't possible to allocate memory!", LOG_ERROR);
+      consoleLog("[ERROR][grid:2] Nao foi possivel alocar memoria", LOG_ERROR);
     }
   }
 
@@ -303,7 +340,7 @@ void showMap(Map *map)
   printf("Obstaculos %d | Sujeira: %d\n", map->obstaclesAmount, map->dirtAmount);
 }
 
-AllocateRobotRes allocateRobot(const Map *map, int num_args, ...)
+Point allocateRobot(const Map *map, int num_args, ...)
 {
   va_list args;
   va_start(args, num_args);
@@ -324,7 +361,7 @@ AllocateRobotRes allocateRobot(const Map *map, int num_args, ...)
     column = va_arg(args, int);
   }
 
-  AllocateRobotRes allocationRes = {column, row};
+  Point allocationRes = {column, row};
 
   return allocationRes;
 }
@@ -351,7 +388,7 @@ bool isInside(Map *map, Point point)
   return true;
 }
 
-bool isRobotBase(AllocateRobotRes robotBase, Point point)
+bool isRobotBase(Point robotBase, Point point)
 {
   if (robotBase.column == point.column && robotBase.row == point.row)
   {
@@ -391,29 +428,86 @@ bool hasObstacle(Map *map, Point point)
   return false;
 }
 
+bool hasDifficult(Map *map, Point point)
+{
+  int column = point.column;
+  int row = point.row;
+
+  char cell = map->grid[row][column];
+
+  if (cell == '!')
+  {
+    return true;
+  }
+
+  return false;
+}
+
+MappedPoint **getMappedPoints(Map *map, Point robotPosition)
+{
+  MappedPoint **points = MALLOC(MappedPoint *, 4);
+
+  if (!points)
+    return NULL;
+
+  for (int i = 0; i < 4; i++)
+  {
+    points[i] = MALLOC(MappedPoint, 1);
+    if (!points[i])
+    {
+      for (int j = 0; j < i; j++)
+        FREE(points[j]);
+      FREE(points);
+      return NULL;
+    }
+  }
+
+  Point northPoint = {robotPosition.column, robotPosition.row - 1};
+  points[NORTH]->column = northPoint.column;
+  points[NORTH]->row = northPoint.row;
+  points[NORTH]->isBlocked = !isInside(map, northPoint) || hasObstacle(map, northPoint);
+
+  Point southPoint = {robotPosition.column, robotPosition.row + 1};
+  points[SOUTH]->column = southPoint.column;
+  points[SOUTH]->row = southPoint.row;
+  points[SOUTH]->isBlocked = !isInside(map, southPoint) || hasObstacle(map, southPoint);
+
+  Point eastPoint = {robotPosition.column + 1, robotPosition.row};
+  points[EAST]->column = eastPoint.column;
+  points[EAST]->row = eastPoint.row;
+  points[EAST]->isBlocked = !isInside(map, eastPoint) || hasObstacle(map, eastPoint);
+
+  Point westPoint = {robotPosition.column - 1, robotPosition.row};
+  points[WEST]->column = westPoint.column;
+  points[WEST]->row = westPoint.row;
+  points[WEST]->isBlocked = !isInside(map, westPoint) || hasObstacle(map, westPoint);
+
+  return points;
+}
+
 void leftToRightAnimation()
 {
-  printf("Left to right selected /\n");
+  printf("Esquerda para direita selecionado /\n");
   printf("->\n");
   SLEEP(0.25);
   system(CLEAR_COMMAND);
-  printf("Left to right selected -\n");
+  printf("Esquerda para direita selecionado -\n");
   printf("-->\n");
   SLEEP(0.25);
   system(CLEAR_COMMAND);
-  printf("Left to right selected |\n");
+  printf("Esquerda para direita selecionado |\n");
   printf("--->\n");
   SLEEP(0.25);
   system(CLEAR_COMMAND);
-  printf("Left to right selected \\\n");
+  printf("Esquerda para direita selecionado \\\n");
   printf("---->\n");
   SLEEP(0.25);
   system(CLEAR_COMMAND);
-  printf("Left to right selected |\n");
+  printf("Esquerda para direita selecionado |\n");
   printf("----->\n");
   SLEEP(0.25);
   system(CLEAR_COMMAND);
-  printf("Left to right selected /\n");
+  printf("Esquerda para direita selecionado /\n");
   printf("------>\n");
   SLEEP(0.25);
   system(CLEAR_COMMAND);
