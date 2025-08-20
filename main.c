@@ -120,10 +120,14 @@ void updateLastPoint(Map *map, Robot *robot);
 
 bool hasAlreadyCleaned(Robot *robot, Point nextPosition);
 void leftToRightClean(Map *map, Robot *robot);
+void spiralClean(Map *map, Robot *robot);
+void zigzagClean(Map *map, Robot *robot);
 
 void goBackRobot(Map *map, Robot *robot);
 
 void leftToRightAnimation();
+void spiralAnimation();
+void zigzagAnimation();
 
 void showSummary(Map *map, Robot *robot, double cpu);
 
@@ -393,9 +397,9 @@ void showMap(Map *map, Robot *robot)
   {
     for (int j = 0; j < columns; j++)
     {
-      if (map->grid[i][j] == '+')
+      if (map->grid[i][j] == 'O')
       {
-        printf("\x1b[34m+\x1b[0m");
+        printf("\x1b[34mO\x1b[0m");
       }
       else
       {
@@ -442,7 +446,7 @@ Point allocateRobot(const Point maxPoint, int num_args, ...)
 void writeRobotBase(Map *map)
 {
   Point robotBase = map->robotBase;
-  map->grid[robotBase.row][robotBase.column] = '+';
+  map->grid[robotBase.row][robotBase.column] = 'O';
 }
 
 bool isInside(Map *map, Point point)
@@ -595,12 +599,12 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
   }
   else if (isDirt || isDifficult)
   {
-    map->grid[newPosition->row][newPosition->column] = '+';
+    map->grid[newPosition->row][newPosition->column] = 'O';
     robot->cleanedCells++;
   }
   else
   {
-    map->grid[newPosition->row][newPosition->column] = '+';
+    map->grid[newPosition->row][newPosition->column] = 'O';
   }
 
   if (isDirt)
@@ -829,8 +833,8 @@ void showSummary(Map *map, Robot *robot, double cpu)
   printf(
       "______________________________________\n"
       "|     Celulas limpas: %d (%.2f%%)    |\n"
-      "|              CPU: %.6fs        |\n"
-      "| Tentativas bloqueadas: %d (%.2f%%) |\n"
+      "|            CPU: %.6fs         |\n"
+      "| Tentativas bloqueadas: %d (%.2f%%)  |\n"
       "______________________________________\n",
       cleanedCells, cleanedCellsPercentage, cpu, blockedAttempts, blockedAttempsPercentage);
 }
