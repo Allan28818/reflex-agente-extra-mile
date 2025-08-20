@@ -121,7 +121,11 @@ void updateLastPoint(Map *map, Robot *robot);
 bool hasAlreadyCleaned(Robot *robot, Point nextPosition);
 void leftToRightClean(Map *map, Robot *robot);
 
+void goBackRobot(Map *map, Robot *robot);
+
 void leftToRightAnimation();
+
+void showSummary(Map *map, Robot *robot, double cpu);
 
 int main()
 {
@@ -213,13 +217,18 @@ int main()
 
   Robot *robot = instantiateRobot(robotInitialPosition);
 
+  clock_t t0 = clock();
   if (strcmp(cleaningModeRes, "1") == 0)
   {
-    showMap(map, robot);
     leftToRightClean(map, robot);
+    goBackRobot(map, robot);
     showMap(map, robot);
+    consoleLog("Carregando...", LOG_INFO);
   }
 
+  clock_t t1 = clock();
+  double cpu = (double)(t1 - t0) / CLOCKS_PER_SEC;
+  showSummary(map, robot, cpu);
   for (int i = 0; i < map->rows; i++)
   {
     FREE(map->grid[i]);
@@ -350,6 +359,7 @@ void fillMap(Map *map)
 
       int isObstacle = (random % 8) == 0;
       int isDirty = (random % 3) == 0;
+      int isDifficult = (random % 10) == 0;
 
       if (isObstacle)
       {
@@ -359,6 +369,11 @@ void fillMap(Map *map)
       else if (isDirty)
       {
         map->grid[i][j] = '*';
+        map->dirtAmount++;
+      }
+      else if (isDifficult)
+      {
+        map->grid[i][j] = '!';
         map->dirtAmount++;
       }
       else
@@ -561,7 +576,7 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
 
   if (!inside)
   {
-    robot->blockedAttempts++;
+
     return;
   }
 
@@ -576,7 +591,6 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
 
   if (newPosition->isBlocked)
   {
-    robot->blockedAttempts++;
     return;
   }
   else if (isDirt || isDifficult)
@@ -648,7 +662,7 @@ void leftToRightClean(Map *map, Robot *robot)
 {
   int nextMove = EAST;
 
-  while (robot->battery > 50)
+  while (robot->battery > 51)
   {
     Point robotPosition = robot->visitedPoints[robot->visitedPointsAmount - 1];
     MappedPoint **mappedPoints = getMappedPoints(map, robotPosition, map->robotBase);
@@ -679,6 +693,11 @@ void leftToRightClean(Map *map, Robot *robot)
       if (nextMappedPoints[EAST]->isBlocked && !nextMappedPoints[SOUTH]->isBlocked)
       {
         nextMove = SOUTH;
+        robot->blockedAttempts++;
+      }
+      else if (!alreadyCleanedWest && !nextMappedPoints[WEST]->isBlocked && nextMappedPoints[EAST]->isBlocked)
+      {
+        nextMove = WEST;
       }
       else if (alreadyCleanedWest && !isNorthBlocked)
       {
@@ -687,6 +706,7 @@ void leftToRightClean(Map *map, Robot *robot)
       else if (!nextMappedPoints[WEST]->isBlocked && nextMappedPoints[EAST]->isBlocked)
       {
         nextMove = WEST;
+        robot->blockedAttempts++;
       }
       freeMappedPoints(nextMappedPoints);
     }
@@ -717,11 +737,13 @@ void leftToRightClean(Map *map, Robot *robot)
       if (nextMappedPoints[WEST]->isBlocked && !nextMappedPoints[SOUTH]->isBlocked)
       {
         nextMove = SOUTH;
+        robot->blockedAttempts++;
       }
 
       else if (!nextMappedPoints[EAST]->isBlocked && nextMappedPoints[WEST]->isBlocked)
       {
         nextMove = EAST;
+        robot->blockedAttempts++;
       }
 
       freeMappedPoints(nextMappedPoints);
@@ -746,8 +768,26 @@ void leftToRightClean(Map *map, Robot *robot)
     showMap(map, robot);
     SLEEP(.25);
     system(CLEAR_COMMAND);
-    printf("\n\n");
+
     freeMappedPoints(mappedPoints);
+  }
+}
+
+void goBackRobot(Map *map, Robot *robot)
+{
+  for (int i = robot->visitedPointsAmount - 1; i >= 0; i--)
+  {
+    Point currentPoint = robot->visitedPoints[i];
+    MappedPoint *previousPoint = MALLOC(MappedPoint, 1);
+    previousPoint->column = currentPoint.column;
+    previousPoint->row = currentPoint.row;
+    previousPoint->isBlocked = 0;
+
+    cleanCell(map, previousPoint, robot);
+    showMap(map, robot);
+    consoleLog("Voltando para a estacao de carregamento!", LOG_ERROR);
+    SLEEP(0.25);
+    system(CLEAR_COMMAND);
   }
 }
 
@@ -777,4 +817,20 @@ void leftToRightAnimation()
   printf("------>\n");
   SLEEP(0.25);
   system(CLEAR_COMMAND);
+}
+
+void showSummary(Map *map, Robot *robot, double cpu)
+{
+  int cleanedCells = map->dirtAmount - robot->cleanedCells;
+  double cleanedCellsPercentage = 100 - (robot->cleanedCells * 100) / map->dirtAmount;
+
+  int blockedAttempts = robot->blockedAttempts;
+  double blockedAttempsPercentage = (blockedAttempts * 100) / (robot->visitedPointsAmount / 2);
+  printf(
+      "______________________________________\n"
+      "|     Celulas limpas: %d (%.2f%%)    |\n"
+      "|              CPU: %.6fs        |\n"
+      "| Tentativas bloqueadas: %d (%.2f%%) |\n"
+      "______________________________________\n",
+      cleanedCells, cleanedCellsPercentage, cpu, blockedAttempts, blockedAttempsPercentage);
 }
