@@ -118,7 +118,8 @@ void freeMappedPoints(MappedPoint **points);
 void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot);
 void updateLastPoint(Map *map, Robot *robot);
 
-void leftToRightClean(Map *map, Robot *robot, Point robotBase);
+bool hasAlreadyCleaned(Robot *robot, Point nextPosition);
+void leftToRightClean(Map *map, Robot *robot);
 
 void leftToRightAnimation();
 
@@ -212,7 +213,12 @@ int main()
 
   Robot *robot = instantiateRobot(robotInitialPosition);
 
-  // TODO: leftToRight here
+  if (strcmp(cleaningModeRes, "1") == 0)
+  {
+    showMap(map, robot);
+    leftToRightClean(map, robot);
+    showMap(map, robot);
+  }
 
   for (int i = 0; i < map->rows; i++)
   {
@@ -372,7 +378,14 @@ void showMap(Map *map, Robot *robot)
   {
     for (int j = 0; j < columns; j++)
     {
-      printf("%c", map->grid[i][j]);
+      if (map->grid[i][j] == '+')
+      {
+        printf("\x1b[34m+\x1b[0m");
+      }
+      else
+      {
+        printf("%c", map->grid[i][j]);
+      }
 
       if (j != (columns - 1))
       {
@@ -414,7 +427,7 @@ Point allocateRobot(const Point maxPoint, int num_args, ...)
 void writeRobotBase(Map *map)
 {
   Point robotBase = map->robotBase;
-  map->grid[robotBase.row][robotBase.column] = 'B';
+  map->grid[robotBase.row][robotBase.column] = '+';
 }
 
 bool isInside(Map *map, Point point)
@@ -571,6 +584,10 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
     map->grid[newPosition->row][newPosition->column] = '+';
     robot->cleanedCells++;
   }
+  else
+  {
+    map->grid[newPosition->row][newPosition->column] = '+';
+  }
 
   if (isDirt)
   {
@@ -613,25 +630,125 @@ void updateLastPoint(Map *map, Robot *robot)
   map->grid[lastPoint.row][lastPoint.column] = '.';
 }
 
-void leftToRightClean(Map *map, Robot *robot, Point robotBase)
+bool hasAlreadyCleaned(Robot *robot, Point nextPosition)
 {
-  MappedPoint **initialMappedPoints = getMappedPoints(map, robotBase, robotBase);
-  bool isFirstExecution = true;
-
-  int verticalOrientation = SOUTH;
-  int horizontalOrientation = EAST;
-
-  while (robot->battery > 50)
+  for (int i = 0; i < robot->visitedPointsAmount; i++)
   {
-    MappedPoint *northPoint, southPoint, eastPoint, westPoint;
-
-    if (isFirstExecution)
+    Point currentRobotPoint = robot->visitedPoints[i];
+    if (currentRobotPoint.column == nextPosition.column && currentRobotPoint.row == nextPosition.row)
     {
-      isFirstExecution = false;
+      return true;
     }
   }
 
-  freeMappedPoints(initialMappedPoints);
+  return false;
+}
+
+void leftToRightClean(Map *map, Robot *robot)
+{
+  int nextMove = EAST;
+
+  while (robot->battery > 50)
+  {
+    Point robotPosition = robot->visitedPoints[robot->visitedPointsAmount - 1];
+    MappedPoint **mappedPoints = getMappedPoints(map, robotPosition, map->robotBase);
+
+    int isNorthBlocked = mappedPoints[NORTH]->isBlocked;
+    int isSouthBlocked = mappedPoints[SOUTH]->isBlocked;
+    int isEastBlocked = mappedPoints[EAST]->isBlocked;
+    int isWestBlocked = mappedPoints[WEST]->isBlocked;
+
+    int areAllBlocked = isNorthBlocked && isSouthBlocked && isEastBlocked && isWestBlocked;
+
+    if (areAllBlocked)
+    {
+      consoleLog("O robo esta preso!", LOG_ERROR);
+      return;
+    }
+
+    if (!isEastBlocked && nextMove == EAST)
+    {
+      cleanCell(map, mappedPoints[EAST], robot);
+      Point robotPosition = {mappedPoints[EAST]->column, mappedPoints[EAST]->row};
+      MappedPoint **nextMappedPoints = getMappedPoints(map, robotPosition, map->robotBase);
+
+      Point westPoint = {nextMappedPoints[WEST]->column, nextMappedPoints[WEST]->row};
+      bool alreadyCleanedWest = hasAlreadyCleaned(robot, westPoint);
+      bool isNorthBlocked = (bool)nextMappedPoints[NORTH]->isBlocked;
+
+      if (nextMappedPoints[EAST]->isBlocked && !nextMappedPoints[SOUTH]->isBlocked)
+      {
+        nextMove = SOUTH;
+      }
+      else if (alreadyCleanedWest && !isNorthBlocked)
+      {
+        nextMove = NORTH;
+      }
+      else if (!nextMappedPoints[WEST]->isBlocked && nextMappedPoints[EAST]->isBlocked)
+      {
+        nextMove = WEST;
+      }
+      freeMappedPoints(nextMappedPoints);
+    }
+    else if (!isSouthBlocked && nextMove == SOUTH)
+    {
+      Point southPoint = {mappedPoints[SOUTH]->column, mappedPoints[SOUTH]->row};
+
+      cleanCell(map, mappedPoints[SOUTH], robot);
+      Point robotPosition = {mappedPoints[SOUTH]->column, mappedPoints[SOUTH]->row};
+      MappedPoint **nextMappedPoints = getMappedPoints(map, robotPosition, map->robotBase);
+
+      if (!nextMappedPoints[EAST]->isBlocked)
+      {
+        nextMove = EAST;
+      }
+      else if (!nextMappedPoints[WEST]->isBlocked)
+      {
+        nextMove = WEST;
+      }
+      freeMappedPoints(nextMappedPoints);
+    }
+    else if (!isWestBlocked && nextMove == WEST)
+    {
+      cleanCell(map, mappedPoints[WEST], robot);
+      Point robotPosition = {mappedPoints[WEST]->column, mappedPoints[WEST]->row};
+      MappedPoint **nextMappedPoints = getMappedPoints(map, robotPosition, map->robotBase);
+
+      if (nextMappedPoints[WEST]->isBlocked && !nextMappedPoints[SOUTH]->isBlocked)
+      {
+        nextMove = SOUTH;
+      }
+
+      else if (!nextMappedPoints[EAST]->isBlocked && nextMappedPoints[WEST]->isBlocked)
+      {
+        nextMove = EAST;
+      }
+
+      freeMappedPoints(nextMappedPoints);
+    }
+    else if (!isNorthBlocked && nextMove == NORTH)
+    {
+      cleanCell(map, mappedPoints[NORTH], robot);
+      Point robotPosition = {mappedPoints[NORTH]->column, mappedPoints[NORTH]->row};
+      MappedPoint **nextMappedPoints = getMappedPoints(map, robotPosition, map->robotBase);
+
+      if (!nextMappedPoints[EAST]->isBlocked)
+      {
+        nextMove = EAST;
+      }
+      else if (!nextMappedPoints[WEST]->isBlocked)
+      {
+        nextMove = WEST;
+      }
+      freeMappedPoints(nextMappedPoints);
+    }
+
+    showMap(map, robot);
+    SLEEP(.25);
+    system(CLEAR_COMMAND);
+    printf("\n\n");
+    freeMappedPoints(mappedPoints);
+  }
 }
 
 void leftToRightAnimation()
