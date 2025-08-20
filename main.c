@@ -49,6 +49,7 @@ typedef struct
   char **grid;
   int columns;
   int rows;
+  Point robotBase;
 } Map;
 
 typedef struct
@@ -94,7 +95,7 @@ typedef enum
 
 void consoleLog(char *content, LogOption option);
 
-Map *allocateMap(int columns, int rows);
+Map *allocateMap(Point initialPosition, Point maxPoint);
 
 Robot *instantiateRobot(Point robotBase);
 void freeRobot(Robot *robot);
@@ -102,8 +103,8 @@ void freeRobot(Robot *robot);
 void fillMap(Map *grid);
 void showMap(Map *grid, Robot *robot);
 
-Point allocateRobot(const Map *map, int num_args, ...);
-void writeRobotBase(Map *map, Point point);
+Point allocateRobot(const Point maxPoint, int num_args, ...);
+void writeRobotBase(Map *map);
 
 bool isInside(Map *map, Point point);
 bool isRobotBase(Point robotBase, Point point);
@@ -115,6 +116,7 @@ MappedPoint **getMappedPoints(Map *map, Point robotPosition, Point robotBase);
 void freeMappedPoints(MappedPoint **points);
 
 void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot);
+void updateLastPoint(Map *map, Robot *robot);
 
 void leftToRightClean(Map *map, Robot *robot, Point robotBase);
 
@@ -125,8 +127,7 @@ int main()
   setlocale(LC_ALL, "");
   int columns = 20;
   int rows = 10;
-
-  Map *map = allocateMap(columns, rows);
+  Point maxPoint = {columns, rows};
 
   char allocateRobotRes[10];
   int robotColumn, robotRow;
@@ -135,8 +136,6 @@ int main()
 
   char cleaningModeRes[10];
   CleaningMode cleaningMode;
-
-  fillMap(map);
 
   consoleLog("Deseja digitar as coordenadas do robo? (s) ", LOG_INFO);
   scanf("%1s", allocateRobotRes);
@@ -150,9 +149,9 @@ int main()
       printf("Digite uma coluna entre 0 - %d...\n", columns - 1);
       scanf("%d", &robotColumn);
 
-      if (robotColumn >= map->columns || robotColumn < 0)
+      if (robotColumn >= columns || robotColumn < 0)
       {
-        printf("O numero da coluna deve estar entre 0 e %d\n", map->columns - 1);
+        printf("O numero da coluna deve estar entre 0 e %d\n", columns - 1);
         continue;
       }
 
@@ -165,9 +164,9 @@ int main()
       printf("Digite a linha entre 0 - %d...\n", rows - 1);
       scanf("%d", &robotRow);
 
-      if (robotRow >= map->rows || robotRow < 0)
+      if (robotRow >= rows || robotRow < 0)
       {
-        printf("O numero da linha deve estar entre 0 e %d\n", map->rows - 1);
+        printf("O numero da linha deve estar entre 0 e %d\n", rows - 1);
         continue;
       }
 
@@ -175,20 +174,14 @@ int main()
       break;
     }
 
-    robotInitialPosition = allocateRobot(map, 2, robotRow, robotColumn);
-    Point currentRobotPosition = {robotInitialPosition.column, robotInitialPosition.row};
-
-    writeRobotBase(map, currentRobotPosition);
+    robotInitialPosition = allocateRobot(maxPoint, 2, robotRow, robotColumn);
   }
   else
   {
     system(CLEAR_COMMAND);
     consoleLog("O sistema ira randomizar automaticamente a posicao do robo!", LOG_INFO);
 
-    robotInitialPosition = allocateRobot(map, 0);
-    Point currentRobotPosition = {robotInitialPosition.column, robotInitialPosition.row};
-
-    writeRobotBase(map, currentRobotPosition);
+    robotInitialPosition = allocateRobot(maxPoint, 0);
   }
 
   while (true)
@@ -213,21 +206,13 @@ int main()
     continue;
   }
 
+  Map *map = allocateMap(robotInitialPosition, maxPoint);
+  fillMap(map);
+  writeRobotBase(map);
+
   Robot *robot = instantiateRobot(robotInitialPosition);
 
-  printf("Robo: coluna(%d) linha(%d) pontos visitados(%d) \n", robot->visitedPoints[0].column, robot->visitedPoints[0].row, robot->visitedPointsAmount);
-
-  map->grid[0][0] = '.';
-  MappedPoint *point = MALLOC(MappedPoint, 1);
-
-  point->column = 0;
-  point->row = 0;
-  point->isBlocked = 0;
-  cleanCell(map, point, robot);
-
-  printf("Ponto coluna(%d) linha(%d)\n", robot->visitedPoints[0].column, robot->visitedPoints[0].row);
-  printf("Ponto coluna(%d) linha(%d)\n", robot->visitedPoints[1].column, robot->visitedPoints[1].row);
-  showMap(map, robot);
+  // TODO: leftToRight here
 
   for (int i = 0; i < map->rows; i++)
   {
@@ -272,7 +257,7 @@ void consoleLog(char *content, LogOption option)
   FREE(presentationContent);
 }
 
-Map *allocateMap(int columns, int rows)
+Map *allocateMap(Point initialPosition, Point maxPoint)
 {
   Map *map = MALLOC(Map, 1);
 
@@ -281,19 +266,19 @@ Map *allocateMap(int columns, int rows)
     consoleLog("[ERROR][map] Nao foi possivel alocar memoria", LOG_ERROR);
   }
 
-  map->columns = columns;
-  map->rows = rows;
-
-  map->grid = MALLOC(char *, rows);
+  map->columns = maxPoint.column;
+  map->rows = maxPoint.row;
+  map->robotBase = initialPosition;
+  map->grid = MALLOC(char *, maxPoint.row);
 
   if (!map->grid)
   {
     consoleLog("[ERROR][grid:1] Nao foi possivel alocar memoria", LOG_ERROR);
   }
 
-  for (int i = 0; i < rows; i++)
+  for (int i = 0; i < maxPoint.row; i++)
   {
-    map->grid[i] = MALLOC(char, columns);
+    map->grid[i] = MALLOC(char, maxPoint.column);
 
     if (!map->grid[i])
     {
@@ -400,12 +385,12 @@ void showMap(Map *map, Robot *robot)
   printf("Obstaculos %d | Sujeira: %d | Bateria: %.2f%%\n", map->obstaclesAmount, map->dirtAmount, robot->battery);
 }
 
-Point allocateRobot(const Map *map, int num_args, ...)
+Point allocateRobot(const Point maxPoint, int num_args, ...)
 {
   va_list args;
   va_start(args, num_args);
-  int maxRowSize = map->rows - 1;
-  int maxColumnSize = map->columns - 1;
+  int maxRowSize = maxPoint.row - 1;
+  int maxColumnSize = maxPoint.column - 1;
 
   int row = rand() % maxRowSize;
   int column = rand() % maxColumnSize;
@@ -426,9 +411,10 @@ Point allocateRobot(const Map *map, int num_args, ...)
   return allocationRes;
 }
 
-void writeRobotBase(Map *map, Point point)
+void writeRobotBase(Map *map)
 {
-  map->grid[point.row][point.column] = 'B';
+  Point robotBase = map->robotBase;
+  map->grid[robotBase.row][robotBase.column] = 'B';
 }
 
 bool isInside(Map *map, Point point)
@@ -566,6 +552,12 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
     return;
   }
 
+  if (!newPosition->isBlocked)
+  {
+
+    updateLastPoint(map, robot);
+  }
+
   int isDirt = hasDirt(map, point);
   int isDifficult = hasDifficult(map, point);
 
@@ -576,7 +568,7 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
   }
   else if (isDirt || isDifficult)
   {
-    map->grid[newPosition->row][newPosition->column] = '.';
+    map->grid[newPosition->row][newPosition->column] = '+';
     robot->cleanedCells++;
   }
 
@@ -607,10 +599,27 @@ void cleanCell(Map *map, MappedPoint *newPosition, Robot *robot)
   robot->visitedPointsAmount++;
 };
 
+void updateLastPoint(Map *map, Robot *robot)
+{
+
+  Point lastPoint = robot->visitedPoints[robot->visitedPointsAmount - 1];
+
+  if (lastPoint.row == map->robotBase.row && lastPoint.column == map->robotBase.column)
+  {
+    map->grid[lastPoint.row][lastPoint.column] = 'B';
+    return;
+  }
+
+  map->grid[lastPoint.row][lastPoint.column] = '.';
+}
+
 void leftToRightClean(Map *map, Robot *robot, Point robotBase)
 {
   MappedPoint **initialMappedPoints = getMappedPoints(map, robotBase, robotBase);
   bool isFirstExecution = true;
+
+  int verticalOrientation = SOUTH;
+  int horizontalOrientation = EAST;
 
   while (robot->battery > 50)
   {
@@ -618,9 +627,8 @@ void leftToRightClean(Map *map, Robot *robot, Point robotBase)
 
     if (isFirstExecution)
     {
+      isFirstExecution = false;
     }
-
-    isFirstExecution = false;
   }
 
   freeMappedPoints(initialMappedPoints);
